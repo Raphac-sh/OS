@@ -1,58 +1,64 @@
 #![no_std]
 #![no_main]
 #![feature(custom_test_frameworks)]
-#![test_runner(crate::test_runner)]
+#![test_runner(os::test_runner)]
 #![reexport_test_harness_main = "test_main"]
+#![feature(allocator_api)]
+
+extern crate alloc;
 
 use core::panic::PanicInfo;
+use bootloader::{entry_point, BootInfo};
+use x86_64::{structures::paging::Page, VirtAddr};
+use alloc::{boxed::Box, vec, vec::Vec, rc::Rc};
+use os::println;
+use os::allocator;
+use os::memory::{self, BootInfoFrameAllocator};
 
+entry_point!(kernel_main);
 
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    println!("{}", _info);
-    loop {}
-}
-
-mod vga_buffer;
-mod serial;
-
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
+fn kernel_main(boot_info : &'static BootInfo) -> ! {
     println!("Hello World {}", "!");
+
+    os::init();
+
+    let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
+    let mut mapper = unsafe { memory::init(phys_mem_offset) };
+    let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map) };
+
+    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
+
+    let heap_value = Box::new(42);
+    println!("heap_value at {:p}", heap_value);
+
+    let mut vec = Vec::new();
+    for i in 0..500 {
+        vec.push(i);
+    }
+    println!("vec at {:p}", vec.as_slice());
+
+    let reference_counted = Rc::new(vec![1,2,3]);
+    let cloned_reference = reference_counted.clone();
+    println!("current reference count is {}", Rc::strong_count(&cloned_reference));
+    core::mem::drop(reference_counted);
+    println!("reference count is {} now", Rc::strong_count(&cloned_reference));
 
     #[cfg(test)]
     test_main();
-    loop{}
+
+    println!("Not crash!");
+    os::hlt_loop();
 }
 
 #[cfg(test)]
-pub fn test_runner(tests: &[&dyn Fn()]) {
-    serial_println!("Running {} tests", tests.len());
-    for test in tests {
-        test();
-    }
-    exit_qemu(QemuExitCode::Success)
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    os::test_panic_handler(info)
 }
 
-#[test_case]
-fn trivial_assertion() {
-    serial_print!("trivial assertion... ");
-    assert_eq!(1, 1);
-    serial_println!("[ok]");
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-pub enum QemuExitCode {
-    Success = 0x10,
-    Failed = 0x11,
-}
-
-pub fn exit_qemu(exit_code: QemuExitCode) {
-    use x86_64::instructions::port::Port;
-
-    unsafe {
-        let mut port = Port::new(0xf4);
-        port.write(exit_code as u32);
-    }
+#[cfg(not(test))]
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    println!("{}", _info);
+    os::hlt_loop();
 }
