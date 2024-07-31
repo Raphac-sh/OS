@@ -9,6 +9,7 @@ use x86_64::{
 
 pub mod bump;
 pub mod linked_list;
+pub mod fixed_size_block; 
 
 pub struct Dummy;
 pub const HEAP_START: usize = 0x4444_4444_0000;
