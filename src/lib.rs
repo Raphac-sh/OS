@@ -17,6 +17,7 @@ pub mod vga_buffer;
 pub mod interrupts;
 pub mod gdt;
 pub mod allocator;
+pub mod task;
 
 pub trait Testable {
     fn run(&self) -> ();

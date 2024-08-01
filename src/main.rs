@@ -13,6 +13,7 @@ use x86_64::{structures::paging::Page, VirtAddr};
 use alloc::{boxed::Box, vec, vec::Vec, rc::Rc};
 use os::println;
 use os::allocator;
+use os::task::{Task, simple_executor::SimpleExecutor};
 use os::memory::{self, BootInfoFrameAllocator};
 
 entry_point!(kernel_main);
@@ -28,26 +29,20 @@ fn kernel_main(boot_info : &'static BootInfo) -> ! {
 
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 
-    let heap_value = Box::new(42);
-    println!("heap_value at {:p}", heap_value);
-
-    let mut vec = Vec::new();
-    for i in 0..500 {
-        vec.push(i);
-    }
-    println!("vec at {:p}", vec.as_slice());
-
-    let reference_counted = Rc::new(vec![1,2,3]);
-    let cloned_reference = reference_counted.clone();
-    println!("current reference count is {}", Rc::strong_count(&cloned_reference));
-    core::mem::drop(reference_counted);
-    println!("reference count is {} now", Rc::strong_count(&cloned_reference));
-
     #[cfg(test)]
     test_main();
 
     println!("Not crash!");
     os::hlt_loop();
+}
+
+async fn async_number() -> u32 {
+    42
+}
+
+async fn example_task() {
+    let number = async_number().await;
+    println!("async_number: {}", number);
 }
 
 #[cfg(test)]
